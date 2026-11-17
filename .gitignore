@@ -74,3 +74,9 @@ $RECYCLE.BIN/
 temp_*.jpg
 camo_*.jpg
 test_*.jpg
+
+# Emergency alert runtime logs & sensitive credentials
+emergency_alerts.log
+email_config.json
+.env
+

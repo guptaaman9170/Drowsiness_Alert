@@ -1,0 +1,6 @@
+{
+  "sender_email": "your_email@gmail.com",
+  "sender_app_password": "xxxx xxxx xxxx xxxx",
+  "emergency_recipient_email": "emergency_contact@example.com",
+  "instructions": "Enter your 16-character Gmail App Password in sender_app_password. Generate it in 1 minute from: https://myaccount.google.com/apppasswords"
+}

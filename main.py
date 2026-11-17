@@ -19,6 +19,7 @@ from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 from alert_sound import AlertManager
+from emergency_notifier import EmergencyNotifier
 
 # Suppress noisy OpenCV camera backend probe warnings
 os.environ["OPENCV_LOG_LEVEL"] = "OFF"
@@ -224,7 +225,8 @@ def calculate_mar(mouth_points):
 
 
 def draw_hud(frame, ear, mar, closed_counter, ear_thresh, consec_frames,
-             drowsy_count, yawn_count, alarm_active, yawn_active, alert_mgr, fps, cam_id=0):
+             drowsy_count, yawn_count, alarm_active, yawn_active, alert_mgr, fps,
+             cam_id=0, alarm_sec=0.0, sos_active=False, sos_email=""):
     """Draws a clean, professional HUD with status badges, meters, camera info, and alert banners."""
     h, w = frame.shape[:2]
 
@@ -235,7 +237,7 @@ def draw_hud(frame, ear, mar, closed_counter, ear_thresh, consec_frames,
     cv2.addWeighted(overlay, 0.70, frame, 0.30, 0, frame)
 
     # Card border
-    border_color = (0, 0, 255) if alarm_active else ((0, 255, 255) if yawn_active else (70, 70, 70))
+    border_color = (0, 0, 255) if (alarm_active or sos_active) else ((0, 255, 255) if yawn_active else (70, 70, 70))
     cv2.rectangle(frame, (10, 10), (10 + card_w, 10 + card_h), border_color, 2)
 
     # Title & FPS
@@ -264,9 +266,13 @@ def draw_hud(frame, ear, mar, closed_counter, ear_thresh, consec_frames,
     thresh_x = bar_x + int((ear_thresh / 0.40) * bar_max_w)
     cv2.line(frame, (thresh_x, bar_y - 2), (thresh_x, bar_y + bar_h + 2), (0, 255, 255), 2)
 
-    # Eye Closure Frame Counter
-    cv2.putText(frame, f"Closed Frames: {closed_counter} / {consec_frames}", (20, 110),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.50, (220, 220, 220), 1, cv2.LINE_AA)
+    # Eye Closure Frame Counter / SOS Timer
+    if alarm_active:
+        cv2.putText(frame, f"Alarm Active: {alarm_sec:0.1f}s / 10.0s (SOS)", (20, 110),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 140, 255), 1, cv2.LINE_AA)
+    else:
+        cv2.putText(frame, f"Closed Frames: {closed_counter} / {consec_frames}", (20, 110),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.50, (220, 220, 220), 1, cv2.LINE_AA)
 
     # MAR Display
     mar_color = (0, 165, 255) if yawn_active else (200, 200, 200)
@@ -284,8 +290,23 @@ def draw_hud(frame, ear, mar, closed_counter, ear_thresh, consec_frames,
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, audio_col, 1, cv2.LINE_AA)
 
     # Prominent Status Banner
-    if alarm_active:
-        # Flashing red emergency border
+    if sos_active:
+        # Flashing alternating Red & Yellow emergency border
+        pulse = int((time.time() * 8) % 2)
+        border_col = (0, 0, 255) if pulse == 0 else (0, 215, 255)
+        cv2.rectangle(frame, (0, 0), (w - 1, h - 1), border_col, 10)
+
+        # Critical SOS Banner
+        banner_w, banner_h = 560, 68
+        bx1 = (w - banner_w) // 2
+        by1 = 35
+        cv2.rectangle(frame, (bx1, by1), (bx1 + banner_w, by1 + banner_h), (0, 0, 180), -1)
+        cv2.rectangle(frame, (bx1, by1), (bx1 + banner_w, by1 + banner_h), (0, 215, 255), 2)
+        cv2.putText(frame, "CRITICAL SOS: 10s UNRESPONSIVE!", (bx1 + 18, by1 + 28),
+                    cv2.FONT_HERSHEY_DUPLEX, 0.65, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(frame, f"Location & SOS Email dispatched to: {sos_email}", (bx1 + 18, by1 + 54),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+    elif alarm_active:
         pulse = int((time.time() * 8) % 2)
         if pulse == 0:
             cv2.rectangle(frame, (0, 0), (w - 1, h - 1), (0, 0, 255), 8)
@@ -314,17 +335,32 @@ def draw_hud(frame, ear, mar, closed_counter, ear_thresh, consec_frames,
         cv2.rectangle(frame, (bx1, by1), (bx1 + badge_w, by1 + badge_h), (255, 255, 255), 1)
         cv2.putText(frame, "STATUS: ATTENTIVE", (bx1 + 22, by1 + 22),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
+        badge_w, badge_h = 240, 32
+        bx1 = (w - badge_w) // 2
+        by1 = h - 45
+        cv2.rectangle(frame, (bx1, by1), (bx1 + badge_w, by1 + badge_h), (0, 140, 0), -1)
+        cv2.rectangle(frame, (bx1, by1), (bx1 + badge_w, by1 + badge_h), (255, 255, 255), 1)
+        cv2.putText(frame, "STATUS: ATTENTIVE", (bx1 + 22, by1 + 22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
 
 
 def main():
     parser = argparse.ArgumentParser(description="Driver Drowsiness & Sleep Alert System")
     parser.add_argument("--camera", "-c", default=None,
                         help="Camera index (e.g. 0, 1) or stream URL to use without prompt.")
+    parser.add_argument("--sos-threshold", "-t", type=float, default=10.0,
+                        help="Continuous alarm duration (seconds) before triggering SOS email (default: 10.0s).")
+    parser.add_argument("--sos-email", "-e", default=None,
+                        help="Emergency recipient email address (default: configured in email_config.json).")
     args = parser.parse_args()
 
     ensure_model_exists()
     print("[INFO] Initializing Audio Alert Manager...", flush=True)
     alert_mgr = AlertManager()
+
+    emergency_notifier = EmergencyNotifier(recipient_email=args.sos_email)
+    sos_email = emergency_notifier.recipient_email
+    print(f"[INFO] Initializing Emergency Notifier (Recipient: {sos_email})...", flush=True)
 
     print("[INFO] Initializing MediaPipe Face Landmarker...", flush=True)
     base_options = python.BaseOptions(model_asset_path=MODEL_PATH)
@@ -352,6 +388,15 @@ def main():
     yawn_thresh = DEFAULT_YAWN_THRESH
     yawn_frames = DEFAULT_YAWN_FRAMES
 
+    # Emergency SOS variables
+    sos_threshold_sec = args.sos_threshold
+    sos_email = emergency_notifier.recipient_email
+    alarm_start_time = None
+    continuous_alarm_sec = 0.0
+    sos_dispatched = False
+    sos_active = False
+    sos_banner_timer = 0.0
+
     closed_counter = 0
     yawn_counter = 0
     drowsy_event_count = 0
@@ -365,6 +410,11 @@ def main():
 
     print("[INFO] Drowsiness Detection System Running!")
     print("=" * 65)
+    print("Safety & Emergency Settings:")
+    print(f"  • EAR Closure Threshold  : {ear_thresh:0.2f}")
+    print(f"  • Continuous Alarm SOS   : {sos_threshold_sec:0.1f} seconds")
+    print(f"  • Emergency Email Alert  : {sos_email}")
+    print("-" * 65)
     print("Keyboard Controls (click inside camera window):")
     print("  'q' or 'ESC' : Exit application cleanly")
     print("  'c'          : Switch to next connected camera live")
@@ -457,14 +507,32 @@ def main():
                     if closed_counter >= consec_frames:
                         if not alarm_active:
                             alarm_active = True
+                            alarm_start_time = time.time()
+                            sos_dispatched = False
                             drowsy_event_count += 1
                             print(f"[ALERT] Drowsiness Detected! Event #{drowsy_event_count} (EAR={current_ear:.3f})")
                         alert_mgr.start_alarm()
+
+                        # Track continuous alarm duration for Emergency SOS
+                        if alarm_start_time is not None:
+                            continuous_alarm_sec = time.time() - alarm_start_time
+                            if continuous_alarm_sec >= sos_threshold_sec and not sos_dispatched:
+                                sos_dispatched = True
+                                sos_active = True
+                                sos_banner_timer = time.time() + 15.0  # Keep SOS banner visible for 15s
+                                print(f"\n[CRITICAL SOS] Driver UNRESPONSIVE for {continuous_alarm_sec:.1f}s!", flush=True)
+                                print(f"[INFO] Dispatching emergency notification with location to: {sos_email}...", flush=True)
+                                emergency_notifier.dispatch_sos_alert(
+                                    continuous_seconds=continuous_alarm_sec,
+                                    ear_value=current_ear
+                                )
                 else:
                     if alarm_active:
                         print(f"[INFO] Eyes opened. Driver attentive again.")
                     closed_counter = 0
                     alarm_active = False
+                    alarm_start_time = None
+                    continuous_alarm_sec = 0.0
                     alert_mgr.stop_alarm()
 
                 # Yawning Logic
@@ -485,12 +553,20 @@ def main():
                 if alarm_active:
                     alert_mgr.stop_alarm()
                     alarm_active = False
+                    alarm_start_time = None
+                    continuous_alarm_sec = 0.0
                 closed_counter = 0
+
+            # Turn off SOS banner after display timer expires
+            if sos_banner_timer > 0 and time.time() > sos_banner_timer:
+                sos_active = False
 
             # Render HUD
             draw_hud(frame, current_ear, current_mar, closed_counter, ear_thresh,
                      consec_frames, drowsy_event_count, yawn_event_count,
-                     alarm_active, yawn_active, alert_mgr, fps, cam_id=current_cam_source)
+                     alarm_active, yawn_active, alert_mgr, fps,
+                     cam_id=current_cam_source, alarm_sec=continuous_alarm_sec,
+                     sos_active=sos_active, sos_email=sos_email)
 
             # Display output
             cv2.imshow("Driver Drowsiness Alert System", frame)

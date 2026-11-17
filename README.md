@@ -18,6 +18,7 @@ An end-to-end Computer Vision project that continuously monitors a driver's eyes
   1. `main.py`: Production-grade implementation using Google MediaPipe Face Mesh & OpenCV. (Fastest, ~600 FPS inference, auto-downloads model).
   2. `gfg_dlib_drowsiness.py`: The exact classic GeeksforGeeks implementation using Dlib's 68-landmark predictor.
   3. `opencv_haar_drowsiness.py`: Pure OpenCV Haar Cascade implementation (zero external models needed).
+- **10-Second Continuous Alarm Emergency SOS**: If the driver remains asleep/unresponsive with the alarm sounding for over 10 consecutive seconds, the system automatically dispatches an emergency SOS email notification with real-time geolocation, GPS coordinates, nearest hospital/police station, and a direct Google Maps link.
 
 ---
 
@@ -104,12 +105,15 @@ python main.py -c 1
 ```
 sona_mana_hai/
 │
-├── main.py                     # Primary real-time drowsiness detector (MediaPipe + OpenCV + Audio)
+├── main.py                     # Primary real-time drowsiness detector (MediaPipe + OpenCV + Audio + SOS)
 ├── alert_sound.py              # Threaded non-blocking audio alert manager (Pygame + Winsound)
+├── emergency_notifier.py       # Asynchronous Emergency Geolocation & SOS Email Notifier
+├── test_email.py               # Fast SMTP verification tool
+├── email_config.example.json   # Template for email credentials configuration
 ├── generate_alarm.py           # Custom frequency wave audio generator
 ├── gfg_dlib_drowsiness.py      # Classic GeeksforGeeks Dlib 68-point reference code
 ├── opencv_haar_drowsiness.py   # Pure OpenCV Haar Cascades fallback detector
-├── test_pipeline.py            # Automated test suite (all 5 integration tests)
+├── test_pipeline.py            # Automated test suite (all 6 integration tests)
 ├── requirements.txt            # Python dependencies
 ├── run.bat                     # Windows 1-click batch launcher
 ├── alarm.wav                   # Generated 2-tone alert buzzer audio file
@@ -117,6 +121,21 @@ sona_mana_hai/
 ├── README.md                   # Project documentation
 └── PROJECT_REPORT.md           # Full academic report with diagrams & viva questions
 ```
+
+---
+
+## 🚨 Emergency SOS Email Setup
+
+1. Copy `email_config.example.json` to `email_config.json`:
+   ```bash
+   cp email_config.example.json email_config.json
+   ```
+2. Enter your Gmail address and 16-character [Gmail App Password](https://myaccount.google.com/apppasswords).
+3. Test your configuration:
+   ```bash
+   python test_email.py
+   ```
+*(Note: `email_config.json` is protected by `.gitignore` and is never committed or pushed to GitHub).*
 
 ---
 

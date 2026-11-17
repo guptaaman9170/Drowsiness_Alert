@@ -13,6 +13,7 @@ from mediapipe.tasks.python import vision
 
 from main import calculate_ear, calculate_mar, draw_hud, MODEL_PATH, ensure_model_exists
 from alert_sound import AlertManager
+from emergency_notifier import EmergencyNotifier, get_current_geolocation
 
 def run_tests():
     print("=" * 60)
@@ -72,16 +73,28 @@ def run_tests():
     print("  -> PASSED: Audio Alert Manager started and stopped cleanly.")
 
     # 5. HUD rendering test
-    print("[TEST 5/5] Testing Heads-Up Display (HUD) rendering on OpenCV canvas...")
+    print("[TEST 5/6] Testing Heads-Up Display (HUD) rendering on OpenCV canvas...")
     canvas = np.zeros((480, 640, 3), dtype=np.uint8)
     draw_hud(canvas, ear=0.28, mar=0.35, closed_counter=0, ear_thresh=0.23,
              consec_frames=20, drowsy_count=1, yawn_count=0, alarm_active=False,
-             yawn_active=False, alert_mgr=alert_mgr, fps=30.0)
+             yawn_active=False, alert_mgr=alert_mgr, fps=30.0,
+             cam_id=0, alarm_sec=10.5, sos_active=True, sos_email="emergency_contact@example.com")
     assert canvas.shape == (480, 640, 3)
-    print("  -> PASSED: HUD rendered on frame with no buffer errors.")
+    print("  -> PASSED: HUD & Emergency SOS Banner rendered with no errors.")
+
+    # 6. Emergency Geolocation & SOS Notification test
+    print("[TEST 6/6] Testing Emergency Geolocation & SOS Dispatch Engine...")
+    geo = get_current_geolocation()
+    assert "lat" in geo and "lon" in geo and "maps_url" in geo, "Geolocation format invalid!"
+    print(f"  -> GPS Location: {geo['city']}, {geo['region']}, {geo['country']} ({geo['lat']}, {geo['lon']})")
+    
+    notifier = EmergencyNotifier("emergency_contact@example.com")
+    dispatched = notifier.dispatch_sos_alert(continuous_seconds=10.0, ear_value=0.08)
+    assert dispatched is not None, "Failed to dispatch SOS alert!"
+    print("  -> PASSED: Emergency SOS notification successfully dispatched & logged.")
 
     print("=" * 60)
-    print("ALL 5 TESTS PASSED SUCCESSFULLY! PROJECT IS 100% READY.")
+    print("ALL 6 TESTS PASSED SUCCESSFULLY! PROJECT IS 100% READY.")
     print("=" * 60)
 
 
